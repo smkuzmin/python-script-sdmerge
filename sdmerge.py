@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 """
-SDMerge v1.3 - Merge and sort subdomain lists with root domain grouping
+SDMerge v1.3 - Subdomain Merger
 
 Reads subdomain lists from stdin, merges them, groups by root domain, and
 outputs in sorted order with root domain headers. Root domain is always
