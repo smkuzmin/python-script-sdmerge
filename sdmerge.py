@@ -1,14 +1,13 @@
 ﻿#!/usr/bin/env python3
 """
-SDMerge v1.3 - Subdomain Merger
+SDMerge v1.6 - Subdomain Merger
 
 Reads subdomain lists from stdin, merges them, groups by root domain, and
 outputs in sorted order with root domain headers. Root domain is always
-printed first in each section.
+printed first in each section (if present in input).
 
 USAGE:
   cat file1.subdomains file2.subdomains .. fileN.subdomains | sdmerge
-
 """
 
 import sys
@@ -16,78 +15,65 @@ from collections import defaultdict
 
 
 def parse_line(line):
-    """Разбираем строку и извлекает домен (игнорируя комментарии)"""
+    """Разбираем строку и извлекаем домен, игнорируя комментарии после #"""
     line = line.strip()
     if not line or line.startswith('#'):
         return None
 
-    # Удаляем часть с комментарием, если она есть
+    # Убираем комментарии в конце строки (всё после #)
     if '#' in line:
         domain = line.split('#', 1)[0].strip()
     else:
-        domain = line
+        domain = line.strip()
 
     if not domain:
+        return None
+
+    # Базовая валидация: домен не должен содержать пробелов
+    if ' ' in domain:
         return None
 
     return domain.lower()
 
 
-def find_roots(domains):
-    """
-    Определяем корневые домены из набора доменов
-    Корневой домен — это домен, который не является поддоменом другого домена из набора
-    """
-    roots = set()
-    for domain in domains:
-        is_root = True
-        for other in domains:
-            if domain != other and domain.endswith('.' + other):
-                is_root = False
-                break
-        if is_root:
-            roots.add(domain)
-    return roots
-
-
-def group_by_root(domains, roots):
-    """Группируем домены по их корневому домену"""
-    groups = defaultdict(set)
-    for domain in domains:
-        # Находим, к какому корневому домену относится этот домен
-        assigned = False
-        for root in roots:
-            if domain == root or domain.endswith('.' + root):
-                groups[root].add(domain)
-                assigned = True
-                break
-        if not assigned:
-            # Сирота - считаем его собственным корневым доменом
-            groups[domain].add(domain)
-    return groups
-
-
 def main():
-    # Читаем и разбираем все домены из stdin
-    all_domains = set()
+    # sections: корневой домен -> множество доменов в этой секции
+    sections = defaultdict(set)
+    # data_set: домены, которые были в данных (не в заголовках)
+    data_set = set()
+
+    current_root = None
 
     for line in sys.stdin:
+        original = line.strip()
+        if not original:
+            continue
+
+        # Проверяем, является ли строка заголовком секции
+        if original.startswith('#'):
+            # Извлекаем корневой домен из заголовка
+            header = original[1:].strip()
+            if '#' in header:
+                header = header.split('#', 1)[0].strip()
+            if header and ' ' not in header:
+                current_root = header.lower()
+            continue
+
+        # Обычная строка с доменом
+        if current_root is None:
+            continue  # Пропускаем домены до первого заголовка
+
         domain = parse_line(line)
         if domain:
-            all_domains.add(domain)
+            sections[current_root].add(domain)
+            data_set.add(domain)
 
-    if not all_domains:
+    if not sections:
         sys.exit(0)
 
-    # Находим корневые домены
-    roots = find_roots(all_domains)
-
-    # Группируем домены по корню
-    groups = group_by_root(all_domains, roots)
-
-    # Выводим, отсортировав по корню: сначала корневой домен, затем отсортированные поддомены
+    # Выводим, отсортировав по корню
     first = True
-    for root in sorted(groups.keys()):
+    for root in sorted(sections.keys()):
         if not first:
             print()  # Пустая строка между группами
         first = False
@@ -95,13 +81,13 @@ def main():
         # Печатаем заголовок корневого домена
         print(f"# {root}")
 
-        # Печатаем сначала корневой домен
-        print(root)
+        # Печатаем корневой домен ТОЛЬКО если он был во входных данных (не в заголовке)
+        if root in data_set:
+            print(root)
 
         # Печатаем отсортированные поддомены (исключая корень)
-        subdomains = [d for d in groups[root] if d != root]
-        for subdomain in sorted(subdomains):
-            print(subdomain)
+        for sub in sorted(d for d in sections[root] if d != root):
+            print(sub)
 
 # Точка входа
 if __name__ == '__main__':
